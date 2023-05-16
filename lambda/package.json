@@ -1,0 +1,22 @@
+{
+  "name": "langchain-email-agent-lambda",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.1280.0",
+    "langchain": "^0.0.55",
+    "mailparser": "^3.6.4",
+    "moment": "^2.29.4",
+    "node-fetch": "^2.6.9"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.92",
+    "@types/aws-sdk": "^2.7.0"
+  }
+}
