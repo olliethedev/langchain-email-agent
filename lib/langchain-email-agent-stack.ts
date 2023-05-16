@@ -5,7 +5,7 @@ import * as ses from 'aws-cdk-lib/aws-ses';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 
-import { VERIFIED_SES_EMAIL, OPENAI_API_KEY } from '../env';
+import { VERIFIED_SES_EMAIL, OPENAI_API_KEY, INFO_WEBSITE } from '../env';
 
 
 export class LangchainEmailAgentStack extends cdk.Stack {
@@ -27,6 +27,7 @@ export class LangchainEmailAgentStack extends cdk.Stack {
         BUCKET_NAME: myBucket.bucketName, // pass in the bucket name as an environment variable
         OPENAI_API_KEY: OPENAI_API_KEY, // pass in the OpenAI API key as an environment variable
         SES_EMAIL: VERIFIED_SES_EMAIL, // pass in the verified SES email as an environment variable
+        INFO_SOURCE: INFO_WEBSITE // pass in the info source as an environment variable
       },
     });
 

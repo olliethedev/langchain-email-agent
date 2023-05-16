@@ -10,7 +10,9 @@
   "license": "ISC",
   "dependencies": {
     "aws-sdk": "^2.1280.0",
-    "langchain": "^0.0.55",
+    "axios": "^1.4.0",
+    "cheerio": "^1.0.0-rc.12",
+    "langchain": "^0.0.75",
     "mailparser": "^3.6.4",
     "moment": "^2.29.4",
     "node-fetch": "^2.6.9"

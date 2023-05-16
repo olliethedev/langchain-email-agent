@@ -2,8 +2,13 @@ const aws = require("aws-sdk");
 const ses = new aws.SES({ region: "us-east-1" });
 const s3 = new aws.S3({ region: "us-east-1" });
 const { simpleParser } = require("mailparser");
+const { ZeroShotAgent, AgentExecutor } = require("langchain/agents");
+const { LLMChain } = require("langchain/chains");
 
 const { ChatOpenAI } = require("langchain/chat_models/openai");
+const { OpenAIEmbeddings } = require("langchain/embeddings/openai");
+const { WebBrowser } = require("langchain/tools/webbrowser");
+
 const {
   SystemMessagePromptTemplate,
   HumanMessagePromptTemplate,
@@ -13,41 +18,37 @@ const {
 
 const SES_Identity_Email = process.env.SES_EMAIL;
 const API_KEY = process.env.OPENAI_API_KEY;
-
-const createBodyPrompt = ChatPromptTemplate.fromPromptMessages([
-  SystemMessagePromptTemplate.fromTemplate(
-    `You are a customer support agent for a company. Your email address is ${SES_Identity_Email}. Your name is Jeff. You are writing an email to a customer. The customer's name is unknown.`
-  ),
-  HumanMessagePromptTemplate.fromTemplate(
-    "Email sender:{sender}\nEmail subject:{subject}\nEmail history:{context}\nTask: Given the email history, please write an email response to the customer. The email response should be written in a polite and professional manner. It is a final draft. Dont leave placeholder text."
-  ),
-]);
+const INFO_SOURCE = process.env.INFO_SOURCE;
 
 exports.handler = async (event) => {
   console.log("Event: ", JSON.stringify(event, null, 2));
   for (let record of event.Records) {
-    let mail = record.ses.mail;
-    let sender = mail.source;
-    let subject = mail.commonHeaders.subject;
-    const { body } = await getBodyFromS3(mail.messageId);
+    try {
+      let mail = record.ses.mail;
+      let sender = mail.source;
+      let subject = mail.commonHeaders.subject;
+      const { body } = await getBodyFromS3(mail.messageId);
 
-    console.log({ sender, subject, body });
+      console.log({ sender, subject, body });
 
-    const { text: responseBody, usage } = await createBody(
-      "gpt-3.5-turbo",
-      sender,
-      subject,
-      body
-    );
+      const { text: responseBody } = await createBody(
+        "gpt-3.5-turbo",
+        sender,
+        subject,
+        body
+      );
 
-    console.log({ responseBody, usage });
+      console.log({ responseBody });
 
-    await sendEmail(sender, subject, responseBody);
+      await sendEmail(sender, subject, responseBody);
+    } catch (error) {
+      console.log(error);
+    }
   }
 
   return {
     statusCode: 200,
-    body: JSON.stringify("Hello from Lambda!"),
+    body: JSON.stringify("Event processed successfully!"),
   };
 };
 
@@ -83,7 +84,6 @@ async function getBodyFromS3(messageId) {
   try {
     const data = await s3.getObject(params).promise();
     const fileContent = data.Body.toString("utf-8"); // convert the file content to a string
-    console.log(fileContent);
 
     // Use simpleParser instead of creating a new Mailparser and writing to it
     const mail = await simpleParser(data.Body);
@@ -104,17 +104,60 @@ const createBody = async (
   subject,
   body
 ) => {
-  const response = await getModel(modelName).generatePrompt([
-    await createBodyPrompt.formatPromptValue({
-      subject: subject,
-      context: body,
-      sender: sender,
-    }),
+  const chat = await getModel(modelName);
+  //   const browsingModel = new ChatOpenAI({ temperature: 0 });
+  const embeddings = new OpenAIEmbeddings();
+  const tools = [new WebBrowser({ model: chat, embeddings })];
+
+  const createBodyPrompt = ChatPromptTemplate.fromPromptMessages([
+    SystemMessagePromptTemplate.fromTemplate(
+      `You are a customer support agent for a company. Your email address is ${SES_Identity_Email}. Your name is Jeff. You are writing an email to a customer.`
+    ),
+    new HumanMessagePromptTemplate(
+      ZeroShotAgent.createPrompt(tools, {
+        prefix: `You are a customer support agent for a company. Your email address is ${SES_Identity_Email}. Your name is Jeff. You are writing an email to a customer. You have access to the following tools:`,
+        suffix: `Business information source: ${INFO_SOURCE} \nTask: Given the email history, please write an email response to the customer. The email response should be written in a polite and professional manner. It is a final draft. Dont leave placeholder text.`,
+      })
+    ),
+    AIMessagePromptTemplate.fromTemplate("Understood."),
+    HumanMessagePromptTemplate.fromTemplate(`{input}
+        This was your previous work (but I haven't seen any of it! I only see what you return as final answer):
+        {agent_scratchpad}`),
   ]);
-  return {
-    text: response.generations[0][0].text,
-    usage: response.llmOutput.tokenUsage.totalTokens,
-  };
+
+  const llmChain = new LLMChain({
+    prompt: createBodyPrompt,
+    llm: chat,
+  });
+
+  const agent = new ZeroShotAgent({
+    llmChain,
+    allowedTools: tools.map((tool) => tool.name),
+  });
+
+  const executor = AgentExecutor.fromAgentAndTools({ agent, tools });
+
+  const task = `Email sender:${sender}\nEmail subject:${subject}\nEmail history:${body}\n`;
+  try {
+    const response = await executor.run(task);
+    //todo: add usage
+    return {
+      text: response,
+      usage: 0,
+    };
+  } catch (error) {
+    console.log({ error });
+    if (error.message.includes("Could not parse LLM output:")) {
+      return {
+        text: error.message.replace("Could not parse LLM output:", ""),
+        usage: 0,
+      };
+    }
+    return {
+      text: "I am sorry, I could not finish your request in time. Please try again later.",
+      usage: 0,
+    };
+  }
 };
 
 const getModel = (modelName = "gpt-3.5-turbo") => {
