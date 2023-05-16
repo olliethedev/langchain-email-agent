@@ -26,14 +26,16 @@ exports.handler = async (event) => {
     try {
       let mail = record.ses.mail;
       let sender = mail.source;
+      let senderName = mail.commonHeaders.from[0];
       let subject = mail.commonHeaders.subject;
       const { body } = await getBodyFromS3(mail.messageId);
 
-      console.log({ sender, subject, body });
+      console.log({ sender, senderName, subject, body });
 
       const { text: responseBody } = await createBody(
         "gpt-3.5-turbo",
         sender,
+        senderName,
         subject,
         body
       );
@@ -83,7 +85,7 @@ async function getBodyFromS3(messageId) {
 
   try {
     const data = await s3.getObject(params).promise();
-    const fileContent = data.Body.toString("utf-8"); // convert the file content to a string
+    // const fileContent = data.Body.toString("utf-8"); // convert the file content to a string
 
     // Use simpleParser instead of creating a new Mailparser and writing to it
     const mail = await simpleParser(data.Body);
@@ -101,6 +103,7 @@ async function getBodyFromS3(messageId) {
 const createBody = async (
   modelName = "gpt-3.5-turbo",
   sender,
+  senderName,
   subject,
   body
 ) => {
@@ -137,7 +140,7 @@ const createBody = async (
 
   const executor = AgentExecutor.fromAgentAndTools({ agent, tools });
 
-  const task = `Email sender:${sender}\nEmail subject:${subject}\nEmail history:${body}\n`;
+  const task = `Email sender:${sender}\n Sender name:${senderName}\n Email subject:${subject}\nEmail history:${body}\n`;
   try {
     const response = await executor.run(task);
     //todo: add usage
