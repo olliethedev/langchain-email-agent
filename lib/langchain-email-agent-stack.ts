@@ -20,9 +20,9 @@ export class LangchainEmailAgentStack extends cdk.Stack {
       code: lambda.Code.fromAsset('lambda'), // lambda code is in 'lambda' directory
       handler: 'index.handler', // exports.handler in your index.js file
       runtime: lambda.Runtime.NODEJS_18_X, // Use Node.js 18.x runtime
-      timeout: cdk.Duration.seconds(60*10), // 10 minutes timeout
+      timeout: cdk.Duration.seconds(60 * 10), // 10 minutes timeout
       retryAttempts: 0, // no retries
-      reservedConcurrentExecutions: 1, // only 1 concurrent execution. Todo: use a better solution to prevent spamming
+      reservedConcurrentExecutions: 1, // only 1 concurrent execution. Todo: improve spam protection
       environment: {
         BUCKET_NAME: myBucket.bucketName, // pass in the bucket name as an environment variable
         OPENAI_API_KEY: OPENAI_API_KEY, // pass in the OpenAI API key as an environment variable
@@ -31,7 +31,7 @@ export class LangchainEmailAgentStack extends cdk.Stack {
       },
     });
 
-    
+
     // Allow lambda to read from S3 bucket
     myBucket.grantRead(myLambda);
 
@@ -66,7 +66,7 @@ export class LangchainEmailAgentStack extends cdk.Stack {
     // Allow SES to invoke the lambda function
     myLambda.addPermission('AllowSESToInvoke', {
       action: 'lambda:InvokeFunction',
-      principal: new iam.ServicePrincipal('ses.amazonaws.com') 
+      principal: new iam.ServicePrincipal('ses.amazonaws.com')
     });
 
     // Allow lambda to send email
@@ -77,13 +77,12 @@ export class LangchainEmailAgentStack extends cdk.Stack {
         'ses:SendTemplatedEmail',
       ],
       resources: [
-        `arn:aws:ses:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:identity/${VERIFIED_SES_EMAIL}`,
+        `arn:aws:ses:${ cdk.Aws.REGION }:${ cdk.Aws.ACCOUNT_ID }:identity/${ VERIFIED_SES_EMAIL }`,
       ],
     }));
 
     // Allow ses to write to S3 bucket
     myBucket.grantPut(new iam.ServicePrincipal('ses.amazonaws.com'));
-
 
   }
 }

@@ -42,7 +42,9 @@ exports.handler = async (event) => {
 
       console.log({ responseBody });
 
-      await sendEmail(sender, subject, responseBody);
+      const clean = responseBody.split("Thought:")[0];
+
+      await sendEmail(sender, subject, clean);
     } catch (error) {
       console.log(error);
     }
@@ -107,42 +109,53 @@ const createBody = async (
   subject,
   body
 ) => {
+  // initialize the models
   const chat = await getModel(modelName);
-  //   const browsingModel = new ChatOpenAI({ temperature: 0 });
   const embeddings = new OpenAIEmbeddings();
   const tools = [new WebBrowser({ model: chat, embeddings })];
-
+  // create the prompt
   const createBodyPrompt = ChatPromptTemplate.fromPromptMessages([
     SystemMessagePromptTemplate.fromTemplate(
-      `You are a customer support agent for a company. Your email address is ${SES_Identity_Email}. Your name is Jeff. You are writing an email to a customer.`
+      `You are a customer support agent for a ChatGPT plugin company. 
+      Your email address is ${SES_Identity_Email}. Your name is Jeff.
+       You are writing an email to a customer.`
     ),
     new HumanMessagePromptTemplate(
       ZeroShotAgent.createPrompt(tools, {
-        prefix: `You are a customer support agent for a company. Your email address is ${SES_Identity_Email}. Your name is Jeff. You are writing an email to a customer. You have access to the following tools:`,
-        suffix: `Business information source: ${INFO_SOURCE} \nTask: Given the email history, please write an email response to the customer. The email response should be written in a polite and professional manner. It is a final draft. Dont leave placeholder text.`,
+        prefix: `You are a customer support agent for a company. 
+        Your email address is ${SES_Identity_Email}. 
+        Your name is Jeff. You are writing an email to a customer. 
+        You have access to the following tools:`,
+        suffix: `Additional information source: ${INFO_SOURCE} \n
+        Task: Given the email history, please write an email response to the customer. 
+        The email response should be written in a polite and professional manner. 
+        It is a final draft. Dont leave placeholder text.`,
       })
     ),
     AIMessagePromptTemplate.fromTemplate("Understood."),
     HumanMessagePromptTemplate.fromTemplate(`{input}
-        This was your previous work (but I haven't seen any of it! I only see what you return as final answer):
+        This was your previous work (but I haven't seen any of it! 
+        I only see what you return as final answer):
         {agent_scratchpad}`),
   ]);
-
+  // initialize the chain
   const llmChain = new LLMChain({
     prompt: createBodyPrompt,
     llm: chat,
   });
-
+  // create the agent
   const agent = new ZeroShotAgent({
     llmChain,
     allowedTools: tools.map((tool) => tool.name),
   });
-
+  // create the executor
   const executor = AgentExecutor.fromAgentAndTools({ agent, tools });
-
-  const task = `Email sender:${sender}\n Sender name:${senderName}\n Email subject:${subject}\nEmail history:${body}\n`;
+  // run the executor
   try {
-    const response = await executor.run(task);
+    const response = await executor.run(`Email sender:${sender}\n 
+    Sender name:${senderName}\n 
+    Email subject:${subject}\n
+    Email history:${body}\n`);
     //todo: add usage
     return {
       text: response,
